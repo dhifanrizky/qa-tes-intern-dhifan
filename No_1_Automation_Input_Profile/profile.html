@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Input your profile</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 380px; margin: 0 auto; padding: 16px; }
+  header { display: flex; align-items: center; gap: 10px; }
+  header button { background: none; border: 0; font-size: 20px; }
+  h1 { font-size: 16px; }
+  label { display: block; font-size: 13px; margin-top: 12px; }
+  .opt { color: #888; font-size: 11px; }
+  input[type=text] { width: 100%; box-sizing: border-box; padding: 11px; margin-top: 5px; border: 1px solid #bbb; border-radius: 10px; }
+  .gender label { display: inline-block; margin-right: 40px; }
+  .err { color: #c00; font-size: 12px; min-height: 14px; }
+  #save { width: 100%; margin-top: 18px; padding: 13px; background: #d81b60; color: #fff; border: 0; border-radius: 8px; font-weight: bold; }
+  #msg { margin-top: 10px; color: #080; }
+</style>
+</head>
+<body>
+<header>
+  <button id="back" type="button" aria-label="Back">&larr;</button>
+  <h1>Input your profile</h1>
+</header>
+
+<label for="firstName">First Name</label>
+<input id="firstName" type="text" placeholder="e.g Joel">
+<div class="err" id="firstName-err"></div>
+
+<label for="middleName">Middle Name <span class="opt">(Optional)</span></label>
+<input id="middleName" type="text" placeholder="e.g K">
+<div class="err" id="middleName-err"></div>
+
+<label for="lastName">Last Name <span class="opt">(Optional)</span></label>
+<input id="lastName" type="text" placeholder="e.g Osteen">
+<div class="err" id="lastName-err"></div>
+
+<label for="nickname">Nickname</label>
+<input id="nickname" type="text" placeholder="Nickname">
+<div class="err" id="nickname-err"></div>
+
+<label>Gender</label>
+<div class="gender">
+  <label><input type="radio" name="gender" value="Male" checked> Male</label>
+  <label><input type="radio" name="gender" value="Female"> Female</label>
+</div>
+
+<label for="birthDate">Birth Date</label>
+<input id="birthDate" type="text" placeholder="DD MMM YYYY">
+<div class="err" id="birthDate-err"></div>
+
+<button id="save" type="button">Save</button>
+<div id="msg"></div>
+
+<script>
+  // Aturan validasi (asumsi, soal tidak menyebutkan aturan resmi):
+  // - First Name : wajib, huruf & spasi, maks 30 karakter
+  // - Middle/Last: opsional, kalau diisi aturannya sama
+  // - Nickname   : wajib, huruf/angka, maks 15 karakter
+  // - Birth Date : wajib, format DD MMM YYYY, tanggal valid, tidak boleh masa depan
+  const bulan = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const el = id => document.getElementById(id);
+
+  function cekNama(id, label, wajib) {
+    const v = el(id).value.trim();
+    let pesan = '';
+    if (!v) { if (wajib) pesan = label + ' is required'; }
+    else if (v.length > 30) pesan = label + ' max 30 characters';
+    else if (!/^[A-Za-z ]+$/.test(v)) pesan = label + ' must contain letters only';
+    el(id + '-err').textContent = pesan;
+    return pesan === '';
+  }
+
+  function cekNick() {
+    const v = el('nickname').value.trim();
+    let pesan = '';
+    if (!v) pesan = 'Nickname is required';
+    else if (v.length > 15) pesan = 'Nickname max 15 characters';
+    else if (!/^[A-Za-z0-9]+$/.test(v)) pesan = 'Nickname must be letters or numbers only';
+    el('nickname-err').textContent = pesan;
+    return pesan === '';
+  }
+
+  function cekTanggal() {
+    const v = el('birthDate').value.trim();
+    let pesan = '';
+    const m = v.match(/^(\d{2}) ([A-Za-z]{3}) (\d{4})$/);
+    if (!v) pesan = 'Birth Date is required';
+    else if (!m) pesan = 'Format must be DD MMM YYYY';
+    else {
+      const h = +m[1], b = bulan.indexOf(m[2].toLowerCase()), t = +m[3];
+      const d = new Date(t, b, h);
+      if (b < 0 || d.getDate() !== h || d.getMonth() !== b) pesan = 'Birth Date is not valid';
+      else if (d > new Date()) pesan = 'Birth Date cannot be in the future';
+    }
+    el('birthDate-err').textContent = pesan;
+    return pesan === '';
+  }
+
+  el('save').addEventListener('click', () => {
+    el('msg').textContent = '';
+    const hasil = [
+      cekNama('firstName', 'First Name', true),
+      cekNama('middleName', 'Middle Name', false),
+      cekNama('lastName', 'Last Name', false),
+      cekNick(),
+      cekTanggal()
+    ];
+    if (hasil.every(Boolean)) el('msg').textContent = 'Profile saved successfully';
+  });
+
+  el('back').addEventListener('click', () => history.back());
+</script>
+</body>
+</html>

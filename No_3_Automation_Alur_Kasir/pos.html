@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kasir (mock sesuai flowchart)</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 16px; }
+  h2 { font-size: 16px; margin: 18px 0 8px; }
+  button { padding: 6px 10px; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { border-bottom: 1px solid #ddd; padding: 6px; text-align: left; font-size: 14px; }
+  .err { color: #c00; min-height: 18px; }
+  .ok { color: #080; font-weight: bold; }
+  #struk { border: 1px dashed #888; padding: 10px; margin-top: 10px; font-family: monospace; white-space: pre-line; }
+  .row { display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<h1 style="font-size:18px">Kasir</h1>
+
+<h2>1. Pilih barang</h2>
+<div id="produk"></div>
+
+<h2>2. Keranjang</h2>
+<table>
+  <thead><tr><th>Barang</th><th>Qty</th><th>Subtotal</th><th></th></tr></thead>
+  <tbody id="cart"></tbody>
+</table>
+
+<h2>3. Diskon / promo</h2>
+<label><input type="checkbox" id="cb-diskon"> Gunakan diskon (10% untuk belanja minimal Rp100.000)</label>
+<div id="info-diskon"></div>
+
+<h2>4. Ringkasan</h2>
+<div class="row"><span>Subtotal</span><span id="subtotal">Rp0</span></div>
+<div class="row"><span>Diskon</span><span id="diskon">Rp0</span></div>
+<div class="row"><strong>Total</strong><strong id="total">Rp0</strong></div>
+
+<h2>5. Pembayaran</h2>
+<select id="metode">
+  <option value="tunai">Tunai</option>
+  <option value="qris">QRIS</option>
+  <option value="split">Split 40:60 (Tunai : QRIS)</option>
+</select>
+
+<div id="cash-section">
+  <p>Bagian tunai: <span id="cash-due">Rp0</span></p>
+  <label>Uang tunai diterima <input id="cash-in" type="text" inputmode="numeric"></label>
+</div>
+
+<div id="qris-section" style="display:none">
+  <p>Bagian QRIS: <span id="qris-due">Rp0</span></p>
+  <p>Status QRIS: <span id="qris-status">Menunggu pembayaran</span></p>
+  <button id="qris-ok" type="button">Simulasi QRIS Berhasil</button>
+  <button id="qris-fail" type="button">Simulasi QRIS Gagal</button>
+</div>
+
+<p><button id="btn-proses" type="button">Proses Pembayaran</button></p>
+<div class="err" id="pesan-error"></div>
+
+<div id="hasil" style="display:none">
+  <div class="ok" id="status-sale"></div>
+  <div>Kembalian: <span id="kembalian">Rp0</span></div>
+  <div id="struk"></div>
+  <p>
+    <button id="btn-cetak" type="button">Cetak Struk</button>
+    <button id="btn-digital" type="button">Kirim Struk Digital</button>
+    <button id="btn-baru" type="button">Transaksi Baru</button>
+  </p>
+  <div id="struk-msg"></div>
+</div>
+
+<script>
+  // Aturan (asumsi, karena soal hanya berisi flowchart):
+  // - Diskon 10% jika diskon dipilih kasir DAN subtotal >= Rp100.000
+  // - Split payment: 40% tunai, 60% QRIS (dibulatkan ke rupiah)
+  // - Pembayaran selesai hanya jika bagian tunai cukup dan QRIS berhasil
+  const PRODUK = {
+    kopi:   { nama: 'Kopi',   harga: 25000 },
+    roti:   { nama: 'Roti',   harga: 15000 },
+    teh:    { nama: 'Teh',    harga: 10000 },
+    susu:   { nama: 'Susu',   harga: 30000 },
+    snack:  { nama: 'Snack',  harga: 24500 },
+    permen: { nama: 'Permen', harga: 500 }
+  };
+  const MIN_DISKON = 100000, PERSEN_DISKON = 0.10, PORSI_TUNAI = 0.4;
+
+  let cart = {};
+  let qris = 'menunggu';
+  let selesai = false;
+
+  const $ = id => document.getElementById(id);
+  const rp = n => 'Rp' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  $('produk').innerHTML = Object.keys(PRODUK).map(k =>
+    `<button type="button" data-add="${k}">${PRODUK[k].nama} ${rp(PRODUK[k].harga)}</button> `).join('');
+
+  function hitung() {
+    const subtotal = Object.keys(cart).reduce((s, k) => s + PRODUK[k].harga * cart[k], 0);
+    const diskon = ($('cb-diskon').checked && subtotal >= MIN_DISKON) ? Math.round(subtotal * PERSEN_DISKON) : 0;
+    return { subtotal, diskon, total: subtotal - diskon };
+  }
+  function bagianTunai(total) {
+    const m = $('metode').value;
+    if (m === 'tunai') return total;
+    if (m === 'split') return Math.round(total * PORSI_TUNAI);
+    return 0;
+  }
+  function bagianQris(total) { return total - bagianTunai(total); }
+
+  function resetBayar() {
+    qris = 'menunggu';
+    $('qris-status').textContent = 'Menunggu pembayaran';
+    $('pesan-error').textContent = '';
+  }
+
+  function render() {
+    const { subtotal, diskon, total } = hitung();
+    $('cart').innerHTML = Object.keys(cart).map(k =>
+      `<tr data-item="${k}"><td>${PRODUK[k].nama}</td><td class="qty">${cart[k]}</td>` +
+      `<td class="sub">${rp(PRODUK[k].harga * cart[k])}</td>` +
+      `<td><button type="button" class="kurang" ${selesai ? 'disabled' : ''}>-</button> ` +
+      `<button type="button" class="hapus" ${selesai ? 'disabled' : ''}>Hapus</button></td></tr>`).join('');
+    $('subtotal').textContent = rp(subtotal);
+    $('diskon').textContent = rp(diskon);
+    $('total').textContent = rp(total);
+
+    let info = '';
+    if ($('cb-diskon').checked) {
+      info = subtotal >= MIN_DISKON ? 'Diskon 10% diterapkan' : 'Diskon tidak berlaku (minimal belanja Rp100.000)';
+    }
+    $('info-diskon').textContent = info;
+
+    const m = $('metode').value;
+    $('cash-section').style.display = m === 'qris' ? 'none' : 'block';
+    $('qris-section').style.display = m === 'tunai' ? 'none' : 'block';
+    $('cash-due').textContent = rp(bagianTunai(total));
+    $('qris-due').textContent = rp(bagianQris(total));
+  }
+
+  function ubah() { resetBayar(); render(); }
+
+  $('produk').addEventListener('click', e => {
+    const k = e.target.dataset.add;
+    if (!k || selesai) return;
+    cart[k] = (cart[k] || 0) + 1;
+    ubah();
+  });
+  $('cart').addEventListener('click', e => {
+    const k = e.target.closest('tr') && e.target.closest('tr').dataset.item;
+    if (!k || selesai) return;
+    if (e.target.classList.contains('kurang')) { cart[k]--; if (cart[k] <= 0) delete cart[k]; }
+    if (e.target.classList.contains('hapus')) delete cart[k];
+    ubah();
+  });
+  $('cb-diskon').addEventListener('change', ubah);
+  $('metode').addEventListener('change', ubah);
+  $('qris-ok').addEventListener('click', () => { qris = 'berhasil'; $('qris-status').textContent = 'QRIS berhasil'; });
+  $('qris-fail').addEventListener('click', () => { qris = 'gagal'; $('qris-status').textContent = 'QRIS gagal'; });
+
+  $('btn-proses').addEventListener('click', () => {
+    $('pesan-error').textContent = '';
+    if (selesai) return;
+    if (Object.keys(cart).length === 0) { $('pesan-error').textContent = 'Keranjang kosong'; return; }
+    const { subtotal, diskon, total } = hitung();
+    const cd = bagianTunai(total), qd = bagianQris(total);
+    const uang = parseInt($('cash-in').value || '0', 10) || 0;
+    if (cd > 0 && uang < cd) { $('pesan-error').textContent = 'Uang tunai kurang'; return; }
+    if (qd > 0 && qris !== 'berhasil') { $('pesan-error').textContent = 'Pembayaran QRIS belum berhasil'; return; }
+
+    selesai = true;
+    $('hasil').style.display = 'block';
+    $('status-sale').textContent = 'Pembayaran disetujui, transaksi selesai';
+    $('kembalian').textContent = rp(cd > 0 ? uang - cd : 0);
+    const baris = ['STRUK PEMBELIAN'];
+    Object.keys(cart).forEach(k => baris.push(`${PRODUK[k].nama} x${cart[k]} ${rp(PRODUK[k].harga * cart[k])}`));
+    baris.push(`Subtotal: ${rp(subtotal)}`, `Diskon: ${rp(diskon)}`, `Total: ${rp(total)}`);
+    if (cd > 0) baris.push(`Tunai: ${rp(cd)}`);
+    if (qd > 0) baris.push(`QRIS: ${rp(qd)}`);
+    $('struk').textContent = baris.join('\n');
+    $('btn-proses').disabled = true;
+    render();
+  });
+
+  $('btn-cetak').addEventListener('click', () => { $('struk-msg').textContent = 'Struk dicetak'; });
+  $('btn-digital').addEventListener('click', () => { $('struk-msg').textContent = 'Struk digital terkirim'; });
+  $('btn-baru').addEventListener('click', () => {
+    cart = {}; selesai = false; $('cb-diskon').checked = false; $('cash-in').value = '';
+    $('metode').value = 'tunai'; $('hasil').style.display = 'none';
+    $('struk-msg').textContent = ''; $('status-sale').textContent = '';
+    $('btn-proses').disabled = false; resetBayar(); render();
+  });
+
+  render();
+</script>
+</body>
+</html>
